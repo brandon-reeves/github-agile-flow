@@ -230,11 +230,11 @@ cmd_default() {
 
 	# finally, ask the user for naming conventions (branch and tag prefixes)
 	if flag force || \
-	   ! git config --get gitflow.prefix.feature >/dev/null 2>&1 || 
-	   ! git config --get gitflow.prefix.task >/dev/null 2>&1 || 
-	   ! git config --get gitflow.prefix.release >/dev/null 2>&1 || 
-	   ! git config --get gitflow.prefix.hotfix >/dev/null 2>&1 || 
 	   ! git config --get gitflow.prefix.story >/dev/null 2>&1 || 
+	   ! git config --get gitflow.prefix.task >/dev/null 2>&1 || 
+	   ! git config --get gitflow.prefix.patch >/dev/null 2>&1 || 
+	   ! git config --get gitflow.prefix.feature >/dev/null 2>&1 || 
+	   ! git config --get gitflow.prefix.release >/dev/null 2>&1 || 
 	   ! git config --get gitflow.prefix.support >/dev/null 2>&1 || 
 	   ! git config --get gitflow.prefix.versiontag >/dev/null 2>&1; then
 		echo
@@ -283,17 +283,17 @@ cmd_default() {
 	fi
 
 
-	# Hotfix branches
-	if ! git config --get gitflow.prefix.hotfix >/dev/null 2>&1 || flag force; then
-		default_suggestion=$(git config --get gitflow.prefix.hotfix || echo hotfix/)
-		printf "Hotfix branches? [$default_suggestion] "
+	# Patch branches
+	if ! git config --get gitflow.prefix.patch >/dev/null 2>&1 || flag force; then
+		default_suggestion=$(git config --get gitflow.prefix.patch || echo patch/)
+		printf "Patch branches? [$default_suggestion] "
 		if noflag defaults; then
 			read answer
 		else
 			printf "\n"
 		fi
 		[ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
-		git_do config gitflow.prefix.hotfix "$prefix"
+		git_do config gitflow.prefix.patch "$prefix"
 	fi
 
 	# Story branches
