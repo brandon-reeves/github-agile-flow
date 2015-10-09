@@ -111,14 +111,21 @@ file=     Use given config file
 	output=$(git config $gitflow_config_option --get gitflow.branch.develop)
 	echo "Branch name for \"next release\" development: $output "
 
+
+	output=$(git config $gitflow_config_option --get gitflow.prefix.story)
+	echo "Story branch prefix: $output "
+
+	output=$(git config $gitflow_config_option --get gitflow.prefix.task)
+	echo "Task branch prefix: $output "
+
+	output=$(git config $gitflow_config_option --get gitflow.prefix.patch)
+	echo "Patch branch prefix: $output "
+
 	output=$(git config $gitflow_config_option --get gitflow.prefix.feature)
 	echo "Feature branch prefix: $output "
 
 	output=$(git config $gitflow_config_option --get gitflow.prefix.release)
 	echo "Release branch prefix: $output "
-
-	output=$(git config $gitflow_config_option --get gitflow.prefix.hotfix)
-	echo "Hotfix branch prefix: $output "
 
 	output=$(git config $gitflow_config_option --get gitflow.prefix.support)
 	echo "Support branch prefix: $output "
@@ -163,13 +170,21 @@ file=     Use given config file
 		cfg_option="gitflow.branch.develop"
 		txt="Branch name for \"next release\" development"
 		;;
+	story)
+		cfg_option="gitflow.prefix.story"
+		txt="Story branch prefix"
+		;;
+	task)
+		cfg_option="gitflow.prefix.task"
+		txt="Task branch prefix"
+		;;
+	patch)
+		cfg_option="gitflow.prefix.patch"
+		txt="Patch branch prefix"
+		;;
 	feature)
 		cfg_option="gitflow.prefix.feature"
 		txt="Feature branch prefix"
-		;;
-	hotfix)
-		cfg_option="gitflow.prefix.hotfix"
-		txt="Hotfix branch prefix"
 		;;
 	release)
 		cfg_option="gitflow.prefix.release"
