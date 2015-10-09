@@ -51,13 +51,9 @@ _finish_from_develop() {
 		git_fetch_branch "$ORIGIN" "$DEVELOP_BRANCH"
 	fi
 
-	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
-
 	# Check if the local branches have all the commits from the remote branches
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 		require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
-	# else
-	# 	cmd_publish "$NAME"
 	fi
 	if git_remote_branch_exists "$ORIGIN/$MASTER_BRANCH"; then
 		require_branches_equal "$MASTER_BRANCH" "$ORIGIN/$MASTER_BRANCH"
@@ -77,19 +73,19 @@ _finish_from_develop() {
 
 	run_pre_hook "$VERSION_PREFIX$VERSION" "$ORIGIN" "$BRANCH"
 
-	# # Try to merge into master.
-	# # In case a previous attempt to finish this release branch has failed,
-	# # but the merge into master was successful, we skip it now
-	# if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
-	# 		git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
-	# 		if noflag squash; then
-	# 			git_do merge --no-ff "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
-	# 		else
-	# 			git_do merge --squash "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
-	# 			flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$MASTER_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
-	# 			git_do commit
-	# 		fi
-	# fi
+	# Try to merge into master.
+	# In case a previous attempt to finish this release branch has failed,
+	# but the merge into master was successful, we skip it now
+	if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
+			git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
+			if noflag squash; then
+				git_do merge --no-ff "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
+			else
+				git_do merge --squash "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
+				flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$MASTER_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
+				git_do commit
+			fi
+	fi
 
 	if noflag notag; then
 		# Try to tag the release.
@@ -120,76 +116,75 @@ _finish_from_develop() {
 		merge_branch="$BRANCH"
 	fi
 
-	# # Try to merge into develop.
-	# # In case a previous attempt to finish this release branch has failed,
-	# # but the merge into develop was successful, we skip it now
-	# if ! git_is_branch_merged_into "$merge_branch" "$DEVELOP_BRANCH"; then
-	# 	git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
+	# Try to merge into develop.
+	# In case a previous attempt to finish this release branch has failed,
+	# but the merge into develop was successful, we skip it now
+	if ! git_is_branch_merged_into "$merge_branch" "$DEVELOP_BRANCH"; then
+		git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
 
-	# 	if noflag nobackmerge; then
-	# 		# Accounting for 'git describe', if a release is tagged
-	# 		# we use the tag commit instead of the branch.
-	# 		if noflag notag; then
-	# 			commit="$VERSION_PREFIX$VERSION"
-	# 		else
-	# 			commit="$MASTER_BRANCH"
-	# 		fi
-	# 	else
-	# 		commit="$BRANCH"
-	# 	fi
+		if noflag nobackmerge; then
+			# Accounting for 'git describe', if a release is tagged
+			# we use the tag commit instead of the branch.
+			if noflag notag; then
+				commit="$VERSION_PREFIX$VERSION"
+			else
+				commit="$MASTER_BRANCH"
+			fi
+		else
+			commit="$BRANCH"
+		fi
 
-	# 	if noflag squash; then
-	# 		git_do merge --no-ff "$commit" || die "There were merge conflicts." # TODO: What do we do now?
-	# 	else
-	# 		git_do merge --squash "$commit" || die "There were merge conflicts." # TODO: What do we do now?
-	# 		flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$DEVELOP_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
-	# 		git_do commit
-	# 	fi
-	# fi
+		if noflag squash; then
+			git_do merge --no-ff "$commit" || die "There were merge conflicts." # TODO: What do we do now?
+		else
+			git_do merge --squash "$commit" || die "There were merge conflicts." # TODO: What do we do now?
+			flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$DEVELOP_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
+			git_do commit
+		fi
+	fi
 
-	git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
 	run_post_hook "$VERSION_PREFIX$VERSION" "$ORIGIN" "$BRANCH"
-	
-	# # Delete branch
-	# if noflag keep; then
 
-	# 	if [ "$BRANCH" = "$(git_current_branch)" ]; then
-	# 		git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
-	# 	fi
+	# Delete branch
+	if noflag keep; then
 
-	# 	# Always delete remote first
-	# 	if noflag keepremote;then
-	# 		if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
-	# 			git_remote_branch_delete "$BRANCH" && remotebranchdeleted=$FLAGS_TRUE
-	# 		fi
-	# 	fi
+		if [ "$BRANCH" = "$(git_current_branch)" ]; then
+			git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
+		fi
 
-	# 	# Delete local after remote to avoid warnings
-	# 	if noflag keeplocal; then
-	# 		if flag force_delete; then
-	# 			git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 		else
-	# 			if noflag squash; then
-	# 				git_do branch -d "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 			else
-	# 				git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 			fi
-	# 		fi
-	# 	fi
+		# Always delete remote first
+		if noflag keepremote;then
+			if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+				git_remote_branch_delete "$BRANCH" && remotebranchdeleted=$FLAGS_TRUE
+			fi
+		fi
 
-	# 	# no more branches: we can safely remove config section
-	# 	if ! git_remote_branch_exists "$ORIGIN/$BRANCH" -a ! git_local_branch_exists "$BRANCH"; then
-	# 		gitflow_config_remove_base_section "$BRANCH"
-	# 	fi
-	# fi
+		# Delete local after remote to avoid warnings
+		if noflag keeplocal; then
+			if flag force_delete; then
+				git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+			else
+				if noflag squash; then
+					git_do branch -d "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+				else
+					git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+				fi
+			fi
+		fi
 
-	# if flag push; then
-	# 	git_do push "$ORIGIN" "$DEVELOP_BRANCH" || die "Could not push branch '$DEVELOP_BRANCH' to remote '$ORIGIN'."
-	# 	git_do push "$ORIGIN" "$MASTER_BRANCH" || die "Could not push branch '$MASTER_BRANCH' to remote '$ORIGIN'."
-	# 	if noflag notag; then
-	# 		git_do push --tags "$ORIGIN" || die "Could not push tags to remote '$ORIGIN'."
-	# 	fi
-	# fi
+		# no more branches: we can safely remove config section
+		if ! git_remote_branch_exists "$ORIGIN/$BRANCH" -a ! git_local_branch_exists "$BRANCH"; then
+			gitflow_config_remove_base_section "$BRANCH"
+		fi
+	fi
+
+	if flag push; then
+		git_do push "$ORIGIN" "$DEVELOP_BRANCH" || die "Could not push branch '$DEVELOP_BRANCH' to remote '$ORIGIN'."
+		git_do push "$ORIGIN" "$MASTER_BRANCH" || die "Could not push branch '$MASTER_BRANCH' to remote '$ORIGIN'."
+		if noflag notag; then
+			git_do push --tags "$ORIGIN" || die "Could not push tags to remote '$ORIGIN'."
+		fi
+	fi
 
 	echo
 	echo "Summary of actions:"
@@ -246,13 +241,9 @@ _finish_base() {
 		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
 	fi
 
-	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
-
 	# Check if the local branches have all the commits from the remote branches
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 		require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
-	# else
-	# 	cmd_publish "$NAME"
 	fi
 	if git_remote_branch_exists "$ORIGIN/$BASE_BRANCH"; then
 		require_branches_equal "$BASE_BRANCH" "$ORIGIN/$BASE_BRANCH"
@@ -292,68 +283,67 @@ _finish_base() {
 		fi
 	fi
 
-	# merge_branch="$BRANCH"
+	merge_branch="$BRANCH"
 
-	# # Try to merge into develop.
-	# # In case a previous attempt to finish this release branch has failed,
-	# # but the merge into develop was successful, we skip it now
-	# if ! git_is_branch_merged_into "$merge_branch" "$BASE_BRANCH"; then
-	# 	git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
+	# Try to merge into develop.
+	# In case a previous attempt to finish this release branch has failed,
+	# but the merge into develop was successful, we skip it now
+	if ! git_is_branch_merged_into "$merge_branch" "$BASE_BRANCH"; then
+		git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
 
-	# 	# Accounting for 'git describe', if a release is tagged
-	# 	# we use the tag commit instead of the branch.
-	# 	if noflag notag; then
-	# 		commit="$VERSION_PREFIX$VERSION"
-	# 	else
-	# 		commit="$BRANCH"
-	# 	fi
+		# Accounting for 'git describe', if a release is tagged
+		# we use the tag commit instead of the branch.
+		if noflag notag; then
+			commit="$VERSION_PREFIX$VERSION"
+		else
+			commit="$BRANCH"
+		fi
 
-	# 	if noflag squash; then
-	# 		git_do merge --no-ff "$commit" || die "There were merge conflicts." # TODO: What do we do now?
-	# 	else
-	# 		git_do merge --squash "$commit" || die "There were merge conflicts." # TODO: What do we do now?
-	# 		flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$BASE_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
-	# 		git_do commit
-	# 	fi
-	# fi
+		if noflag squash; then
+			git_do merge --no-ff "$commit" || die "There were merge conflicts." # TODO: What do we do now?
+		else
+			git_do merge --squash "$commit" || die "There were merge conflicts." # TODO: What do we do now?
+			flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$BASE_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
+			git_do commit
+		fi
+	fi
 
-	git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
 	run_post_hook "$VERSION_PREFIX$VERSION" "$ORIGIN" "$BRANCH"
 
-	# # Delete branch
-	# if noflag keep; then
+	# Delete branch
+	if noflag keep; then
 
-	# 	# Always delete remote first
-	# 	if noflag keepremote;then
-	# 		if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
-	# 			git_remote_branch_delete "$BRANCH" && remotebranchdeleted=$FLAGS_TRUE
-	# 		fi
-	# 	fi
+		# Always delete remote first
+		if noflag keepremote;then
+			if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+				git_remote_branch_delete "$BRANCH" && remotebranchdeleted=$FLAGS_TRUE
+			fi
+		fi
 
-	# 	# Delete local after remote to avoid warnings
-	# 	if noflag keeplocal; then
-	# 		if [ "$BRANCH" = "$(git_current_branch)" ]; then
-	# 			git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
-	# 		fi
-	# 		if flag force_delete; then
-	# 			git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 		else
-	# 			git_do branch -d "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 		fi
-	# 	fi
+		# Delete local after remote to avoid warnings
+		if noflag keeplocal; then
+			if [ "$BRANCH" = "$(git_current_branch)" ]; then
+				git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
+			fi
+			if flag force_delete; then
+				git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+			else
+				git_do branch -d "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+			fi
+		fi
 
-	# 	# no more branches: we can safely remove config section
-	# 	if ! git_remote_branch_exists "$ORIGIN/$BRANCH" -a ! git_local_branch_exists "$BRANCH"; then
-	# 		gitflow_config_remove_base_section "$BRANCH"
-	# 	fi
-	# fi
+		# no more branches: we can safely remove config section
+		if ! git_remote_branch_exists "$ORIGIN/$BRANCH" -a ! git_local_branch_exists "$BRANCH"; then
+			gitflow_config_remove_base_section "$BRANCH"
+		fi
+	fi
 
-	# if flag push; then
-	# 	git_do push "$ORIGIN" "$BASE_BRANCH" || die "Could not push branch '$BASE_BRANCH' to remote '$ORIGIN'."
-	# 	if noflag notag; then
-	# 		git_do push --tags "$ORIGIN" || die "Could not push tags to remote '$ORIGIN'."
-	# 	fi
-	# fi
+	if flag push; then
+		git_do push "$ORIGIN" "$BASE_BRANCH" || die "Could not push branch '$BASE_BRANCH' to remote '$ORIGIN'."
+		if noflag notag; then
+			git_do push --tags "$ORIGIN" || die "Could not push tags to remote '$ORIGIN'."
+		fi
+	fi
 
 	echo
 	echo "Summary of actions:"
@@ -548,7 +538,7 @@ v,verbose!           Verbose (more) output
 	gitflow_require_version_arg
 	gitflow_config_set_base_branch $base $BRANCH
 
-	# require_no_existing_release_branches
+	require_no_existing_release_branches
 
 	# Sanity checks
 	require_clean_working_tree
@@ -672,8 +662,6 @@ S,[no]squash        Squash release during merge
 	# merged into the local branch
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 			git_fetch_branch "$ORIGIN" "$BRANCH"
-	else
-		cmd_publish "$NAME"
 	fi
 
 	if [ "$BASE_BRANCH" = "$DEVELOP_BRANCH" ]; then
@@ -681,10 +669,6 @@ S,[no]squash        Squash release during merge
 	else
 		_finish_base
 	fi
-
-	PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" |sed "s/\.git//g");
-	COMPARE_URL="https://$PUSH_URL/compare/$BASE_BRANCH...$BRANCH?expand=1";
-	open $COMPARE_URL;
 }
 
 cmd_branch() {
@@ -784,19 +768,19 @@ S,[no]squash 		Squash release during merge
 
 	run_pre_hook "$VERSION_PREFIX$VERSION" "$ORIGIN" "$BRANCH"
 
-	# # Try to merge into master.
-	# # In case a previous attempt to finish this release branch has failed,
-	# # but the merge into master was successful, we skip it now
-	# if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
-	# 		git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
-	# 		if noflag squash; then
-	# 			git_do merge --no-ff "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
-	# 		else
-	# 			git_do merge --squash "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
-	# 			flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$MASTER_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
-	# 			git_do commit
-	# 		fi
-	# fi
+	# Try to merge into master.
+	# In case a previous attempt to finish this release branch has failed,
+	# but the merge into master was successful, we skip it now
+	if ! git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
+			git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
+			if noflag squash; then
+				git_do merge --no-ff "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
+			else
+				git_do merge --squash "$BRANCH" || die "There were merge conflicts." # TODO: What do we do now?
+				flag squash_info && gitflow_create_squash_message "Merged release branch '$BRANCH'" "$MASTER_BRANCH" "$BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
+				git_do commit
+			fi
+	fi
 
 	if noflag notag; then
 		# Try to tag the release.
@@ -954,28 +938,28 @@ r,[no]remote     Delete remote branch
 
 	current_branch=$(git_current_branch)
 	# We can't delete a branch we are on, switch to the develop branch.
-	# if [ "$BRANCH" = "$current_branch" ]; then
-	# 	require_clean_working_tree
-	# 	git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
-	# fi
+	if [ "$BRANCH" = "$current_branch" ]; then
+		require_clean_working_tree
+		git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
+	fi
 
-	# if ( git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH" && git_is_branch_merged_into "$BRANCH" "$DEVELOP_BRANCH" ); then
-	# 	git_do branch -d "$BRANCH" || die "Could not delete the $BRANCH."
-	# 	if flag remote; then
-	# 		git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
-	# 	fi
-	# else
-	# 	if flag force; then
-	# 		git_do branch -D "$BRANCH" || die "Could not delete the $BRANCH."
-	# 		if flag remote; then
-	# 			git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
-	# 		fi
-	# 	else
-	# 		die "Release branch '$BRANCH' has been not been merged in branch '$MASTER_BRANCH' and/or branch '$DEVELOP_BRANCH'. Use -f to force the deletion."
-	# 	fi
-	# fi
+	if ( git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH" && git_is_branch_merged_into "$BRANCH" "$DEVELOP_BRANCH" ); then
+		git_do branch -d "$BRANCH" || die "Could not delete the $BRANCH."
+		if flag remote; then
+			git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
+		fi
+	else
+		if flag force; then
+			git_do branch -D "$BRANCH" || die "Could not delete the $BRANCH."
+			if flag remote; then
+				git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
+			fi
+		else
+			die "Release branch '$BRANCH' has been not been merged in branch '$MASTER_BRANCH' and/or branch '$DEVELOP_BRANCH'. Use -f to force the deletion."
+		fi
+	fi
 
-	# gitflow_config_remove_base_section "$BRANCH"
+	gitflow_config_remove_base_section "$BRANCH"
 	run_post_hook "$VERSION" "$ORIGIN" "$BRANCH"
 
 	echo

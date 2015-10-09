@@ -381,8 +381,6 @@ b,[no]nobackmerge     Don't back-merge master, or tag if applicable, in develop
 	# merged into the local branch
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 		git_fetch_branch "$ORIGIN" "$BRANCH"
-	else
-		cmd_publish "$NAME"
 	fi
 
 	# Update local branches with remote branches
@@ -391,13 +389,10 @@ b,[no]nobackmerge     Don't back-merge master, or tag if applicable, in develop
 		[ "$BASE_BRANCH" = "$MASTER_BRANCH" ] && git_fetch_branch "$ORIGIN" "$DEVELOP_BRANCH"
 	fi
 
-	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
-
 	# Check if the local branches have all the commits from the remote branches
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 		require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
 	fi
-
 	if git_remote_branch_exists "$ORIGIN/$BASE_BRANCH"; then
 		require_branches_equal "$BASE_BRANCH" "$ORIGIN/$BASE_BRANCH"
 	fi
@@ -441,14 +436,14 @@ b,[no]nobackmerge     Don't back-merge master, or tag if applicable, in develop
 
 	run_pre_hook "$VERSION_PREFIX$VERSION" "$ORIGIN" "$BRANCH"
 
-	# # Try to merge into BASE.
-	# # In case a previous attempt to finish this release branch has failed,
-	# # but the merge into BASE was successful, we skip it now
-	# if ! git_is_branch_merged_into "$BRANCH" "$BASE_BRANCH"; then
-	# 	git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
-	# 	git_do merge --no-ff "$BRANCH" || die "There were merge conflicts."
-	# 	# TODO: What do we do now?
-	# fi
+	# Try to merge into BASE.
+	# In case a previous attempt to finish this release branch has failed,
+	# but the merge into BASE was successful, we skip it now
+	if ! git_is_branch_merged_into "$BRANCH" "$BASE_BRANCH"; then
+		git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
+		git_do merge --no-ff "$BRANCH" || die "There were merge conflicts."
+		# TODO: What do we do now?
+	fi
 
 	if noflag notag; then
 		# Try to tag the release.
@@ -474,11 +469,11 @@ b,[no]nobackmerge     Don't back-merge master, or tag if applicable, in develop
 	if [ "$BASE_BRANCH" = "$MASTER_BRANCH" ]; then
 		# By default we back-merge the $MASTER_BRANCH unless the user explicitly
 		# stated not to do a back-merge, in that case we use the $BRANCH.
-		# if noflag nobackmerge; then
-		# 	MERGE_BRANCH="$BASE_BRANCH"
-		# else
-		# 	MERGE_BRANCH="$BRANCH"
-		# fi
+		if noflag nobackmerge; then
+			MERGE_BRANCH="$BASE_BRANCH"
+		else
+			MERGE_BRANCH="$BRANCH"
+		fi
 
 		# Try to merge into develop.
 		# In case a previous attempt to finish this release branch has failed,
@@ -486,61 +481,53 @@ b,[no]nobackmerge     Don't back-merge master, or tag if applicable, in develop
 		if ! git_is_branch_merged_into "$MERGE_BRANCH" "$DEVELOP_BRANCH"; then
 			git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
 
-			# if noflag nobackmerge; then
-			# 	# Accounting for 'git describe', if a release is tagged
-			# 	# we use the tag commit instead of the branch.
-			# 	if noflag notag; then
-			# 		commit="$VERSION_PREFIX$VERSION"
-			# 	else
-			# 		commit="$BASE_BRANCH"
-			# 	fi
-			# else
-			# 	commit="$BRANCH"
-			# fi
+			if noflag nobackmerge; then
+				# Accounting for 'git describe', if a release is tagged
+				# we use the tag commit instead of the branch.
+				if noflag notag; then
+					commit="$VERSION_PREFIX$VERSION"
+				else
+					commit="$BASE_BRANCH"
+				fi
+			else
+				commit="$BRANCH"
+			fi
 
-			# git_do merge --no-ff "$commit" || die "There were merge conflicts."
+			git_do merge --no-ff "$commit" || die "There were merge conflicts."
 			# TODO: What do we do now?
-			PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" |sed "s/\.git//g");
-			COMPARE_URL="https://$PUSH_URL/compare/$DEVELOP_BRANCH...$BRANCH?expand=1";
-			open $COMPARE_URL;
 		fi
 	fi
 
-	git_do checkout "$BASE_BRANCH" || die "Could not check out branch '$BASE_BRANCH'."
 	run_post_hook "$VERSION_PREFIX$VERSION" "$ORIGIN" "$BRANCH"
 
-	PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" |sed "s/\.git//g");
-	COMPARE_URL="https://$PUSH_URL/compare/$BASE_BRANCH...$BRANCH?expand=1";
-	open $COMPARE_URL;
-
 	# Delete branch
-	# if noflag keep; then
+	if noflag keep; then
 
-	# 	# Always delete remote first
-	# 	if noflag keepremote;then
-	# 		if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
-	# 			git_remote_branch_delete "$BRANCH" && remotebranchdeleted=$FLAGS_TRUE
-	# 		fi
-	# 	fi
+		# Always delete remote first
+		if noflag keepremote;then
+			if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+				git_remote_branch_delete "$BRANCH" && remotebranchdeleted=$FLAGS_TRUE
+			fi
+		fi
 
-	# 	# Delete local after remote to avoid warnings
-	# 	if noflag keeplocal; then
-	# 		if [ "$BRANCH" = "$(git_current_branch)" ]; then
-	# 			git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
-	# 		fi
-	# 		if flag force_delete; then
-	# 			git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 		else
-	# 			git_do branch -d "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
-	# 		fi
-	# 	fi
+		# Delete local after remote to avoid warnings
+		if noflag keeplocal; then
+			if [ "$BRANCH" = "$(git_current_branch)" ]; then
+				git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
+			fi
+			if flag force_delete; then
+				git_do branch -D "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+			else
+				git_do branch -d "$BRANCH" && localbranchdeleted=$FLAGS_TRUE
+			fi
+		fi
 
-	# 	# no more branches: we can safely remove config section
-	# 	if ! git_remote_branch_exists "$ORIGIN/$BRANCH" -a ! git_local_branch_exists "$BRANCH"; then
-	# 		gitflow_config_remove_base_section "$BRANCH"
-	# 	fi
+		# no more branches: we can safely remove config section
+		if ! git_remote_branch_exists "$ORIGIN/$BRANCH" -a ! git_local_branch_exists "$BRANCH"; then
+			gitflow_config_remove_base_section "$BRANCH"
+		fi
 
-	# fi
+	fi
 
 	if flag push; then
 		if [ "$BASE_BRANCH" = "$MASTER_BRANCH" ]; then
@@ -628,29 +615,29 @@ r,[no]remote          Delete remote branch
 	run_pre_hook "$VERSION" "$ORIGIN" "$BRANCH"
 
 	current_branch=$(git_current_branch)
-	# # We can't delete a branch we are on, switch to the master branch.
-	# if [ "$BRANCH" = "$current_branch" ]; then
-	# 	require_clean_working_tree
-	# 	git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
-	# fi
+	# We can't delete a branch we are on, switch to the master branch.
+	if [ "$BRANCH" = "$current_branch" ]; then
+		require_clean_working_tree
+		git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
+	fi
 
-	# if ( git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH" && git_is_branch_merged_into "$BRANCH" "$DEVELOP_BRANCH" ); then
-	# 	git_do branch -d "$BRANCH" || die "Could not delete the $BRANCH."
-	# 	if flag remote; then
-	# 		git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
-	# 	fi
-	# else
-	# 	if flag force; then
-	# 		git_do branch -D "$BRANCH" || die "Could not delete the $BRANCH."
-	# 		if flag remote; then
-	# 			git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
-	# 		fi
-	# 	else
-	# 		die "Hotfix branch '$BRANCH' has been not been merged in branch '$MASTER_BRANCH' and/or branch '$DEVELOP_BRANCH'. Use -f to force the deletion."
-	# 	fi
-	# fi
+	if ( git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH" && git_is_branch_merged_into "$BRANCH" "$DEVELOP_BRANCH" ); then
+		git_do branch -d "$BRANCH" || die "Could not delete the $BRANCH."
+		if flag remote; then
+			git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
+		fi
+	else
+		if flag force; then
+			git_do branch -D "$BRANCH" || die "Could not delete the $BRANCH."
+			if flag remote; then
+				git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."
+			fi
+		else
+			die "Hotfix branch '$BRANCH' has been not been merged in branch '$MASTER_BRANCH' and/or branch '$DEVELOP_BRANCH'. Use -f to force the deletion."
+		fi
+	fi
 
-	# gitflow_config_remove_base_section "$BRANCH"
+	gitflow_config_remove_base_section "$BRANCH"
 	run_post_hook "$VERSION" "$ORIGIN" "$BRANCH"
 
 	echo

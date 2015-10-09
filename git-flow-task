@@ -41,11 +41,12 @@ init() {
   require_gitflow_initialized
   gitflow_load_settings
   PREFIX=$(git config --get gitflow.prefix.task)
+  STORY_PREFIX=$(git config --get gitflow.prefix.story)
 }
 
 usage() {
 	echo "usage: git flow task [list] [-v]"
-	echo "       git flow task start [-F] <name> [<base>]"
+	echo "       git flow task start [-F] <name> <story>"
 	echo "       git flow task finish [-rFkDS] [<name|nameprefix>]"
 	echo "       git flow task publish <name>"
 	echo "       git flow task track <name>"
@@ -72,7 +73,7 @@ cmd_list() {
 		warn ""
 		warn "You can start a new Task branch:"
 		warn ""
-		warn "    git flow task start <name> [<base>]"
+		warn "    git flow task start <name> <story>"
 		warn ""
 		exit 0
 	fi
@@ -125,6 +126,13 @@ cmd_help() {
 require_name_arg() {
 	if [ "$NAME" = "" ]; then
 		warn "Missing argument <name>"
+		usage
+		exit 1
+	fi
+}
+require_story_arg() {
+	if [ "$STORY" = "" ]; then
+		warn "Missing argument <story>"
 		usage
 		exit 1
 	fi
@@ -196,8 +204,10 @@ parse_remote_name() {
 cmd_start() {
 	DEFINE_boolean fetch false 'fetch from origin before performing local operation' F
 	parse_args "$@"
-	BASE=${2:-$DEVELOP_BRANCH}
+	STORY=${2}
+	BASE=$STORY_PREFIX$STORY
 	require_name_arg
+	require_story_arg
 
 	# sanity checks
 	require_branch_absent "$BRANCH"

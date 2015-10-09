@@ -107,7 +107,7 @@ cmd_default() {
 			done
 		fi
 		
-		printf "Branch name for production releases: [$default_suggestion] "
+		printf "Branch name for main development: [$default_suggestion] "
 		if noflag defaults; then
 			read answer
 		else
@@ -166,7 +166,7 @@ cmd_default() {
 			
 		fi
 
-		printf "Branch name for \"next release\" development: [$default_suggestion] "
+		printf "Branch name for \"legacy\" development: [qa] "
 		if noflag defaults; then
 			read answer
 		else

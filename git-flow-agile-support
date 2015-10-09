@@ -73,8 +73,6 @@ v,verbose         Verbose (more) output
 	local base master_sha branch_sha
 	local tagname nicename
 
-	osascript -e 'tell application "Tower" to display dialog "Reminder: clicking ok will initiate a pull request instead of directly merging"'
-
 	# Define flags
 	DEFINE_boolean 'verbose' false 'verbose (more) output' v
 
