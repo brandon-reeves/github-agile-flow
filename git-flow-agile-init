@@ -136,7 +136,7 @@ file=    use given config file
 			default_suggestion=$(git config --get gitflow.branch.master || echo master)
 		else
 			echo
-			echo "Which branch should be used for bringing forth production releases?"
+			echo "Which branch should be used for MAIN DEVELOPMENT?"
 			git_local_branches | sed 's/^.*$/   - &/g'
 
 			should_check_existence=YES
@@ -149,7 +149,7 @@ file=    use given config file
 			done
 		fi
 
-		printf "Branch name for production releases: [$default_suggestion] "
+		printf "Branch name for MAIN DEVELOPMENT: [$default_suggestion] "
 		if noflag defaults; then
 			read answer
 		else
@@ -181,15 +181,15 @@ file=    use given config file
 		branch_count=$(git_local_branches | grep -v "^${master_branch}\$" | wc -l)
 		if [ "$branch_count" -eq 0 ]; then
 			should_check_existence=NO
-			default_suggestion=$(git config --get gitflow.branch.develop || echo develop)
+			default_suggestion=$(git config --get gitflow.branch.develop || echo qa)
 		else
 			echo
-			echo "Which branch should be used for integration of the \"next release\"?"
+			echo "Which branch should be used for \"LEGACY\" development?"
 			git_local_branches | grep -v "^${master_branch}\$" | sed 's/^.*$/   - &/g'
 
 			should_check_existence=YES
 			default_suggestion=
-			for guess in $(git config --get gitflow.branch.develop) 'develop' 'int' 'integration' 'master'; do
+			for guess in $(git config --get gitflow.branch.develop) 'qa' 'develop' 'int' 'integration' 'master'; do
 				if git_local_branch_exists "$guess" && [ "$guess" != "$master_branch" ]; then
 					default_suggestion="$guess"
 					break
@@ -198,12 +198,12 @@ file=    use given config file
 
 			if [ -z $default_suggestion ]; then
 				should_check_existence=NO
-				default_suggestion=$(git config --get gitflow.branch.develop || echo develop)
+				default_suggestion=$(git config --get gitflow.branch.develop || echo qa)
 			fi
 
 		fi
 
-		printf "Branch name for \"next release\" development: [$default_suggestion] "
+		printf "Branch name for \"LEGACY\" development: [$default_suggestion] "
 		if noflag defaults; then
 			read answer
 		else
@@ -211,9 +211,9 @@ file=    use given config file
 		fi
 		develop_branch=${answer:-$default_suggestion}
 
-		if [ "$master_branch" = "$develop_branch" ]; then
-			die "Production and integration branches should differ."
-		fi
+		# if [ "$master_branch" = "$develop_branch" ]; then
+		# 	die "Production and integration branches should differ."
+		# fi
 
 		# Check existence in case of an already existing repo
 		if [ "$should_check_existence" = "YES" ]; then
@@ -266,13 +266,41 @@ file=    use given config file
 
 	# Ask the user for naming conventions (branch and tag prefixes )
 	if flag force || \
+		! git config --get gitflow.prefix.story >/dev/null 2>&1 ||
+		! git config --get gitflow.prefix.task >/dev/null 2>&1 ||
 		! git config --get gitflow.prefix.feature >/dev/null 2>&1 ||
 		! git config --get gitflow.prefix.release >/dev/null 2>&1 ||
-		! git config --get gitflow.prefix.hotfix >/dev/null 2>&1 ||
+		! git config --get gitflow.prefix.patch >/dev/null 2>&1 ||
 		! git config --get gitflow.prefix.support >/dev/null 2>&1 ||
 		! git config --get gitflow.prefix.versiontag >/dev/null 2>&1; then
 		echo
 		echo "How to name your supporting branch prefixes?"
+	fi
+
+	# Story branches
+	if ! git config --get gitflow.prefix.story >/dev/null 2>&1 || flag force; then
+		default_suggestion=$(git config --get gitflow.prefix.story || echo story/)
+		printf "Story branches? [$default_suggestion] "
+		if noflag defaults; then
+			read answer
+		else
+			printf "\n"
+		fi
+		[ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
+		git_do config $gitflow_config_option gitflow.prefix.story "$prefix"
+	fi
+
+	# Task branches
+	if ! git config --get gitflow.prefix.task >/dev/null 2>&1 || flag force; then
+		default_suggestion=$(git config --get gitflow.prefix.task || echo task/)
+		printf "Task branches? [$default_suggestion] "
+		if noflag defaults; then
+			read answer
+		else
+			printf "\n"
+		fi
+		[ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
+		git_do config $gitflow_config_option gitflow.prefix.task "$prefix"
 	fi
 
 	# Feature branches
@@ -291,39 +319,41 @@ file=    use given config file
 	# Release branches
 	if ! git config --get gitflow.prefix.release >/dev/null 2>&1 || flag force; then
 		default_suggestion=$(git config --get gitflow.prefix.release || echo release/)
-		printf "Release branches? [$default_suggestion] "
-		if noflag defaults; then
-			read answer
-		else
-			printf "\n"
-		fi
-		[ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
+		# printf "Release branches? [$default_suggestion] "
+		# if noflag defaults; then
+		# 	read answer
+		# else
+		# 	printf "\n"
+		# fi
+		# [ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
+		prefix=$default_suggestion
 		git_do config $gitflow_config_option gitflow.prefix.release "$prefix"
 	fi
 
-	# Hotfix branches
-	if ! git config --get gitflow.prefix.hotfix >/dev/null 2>&1 || flag force; then
-		default_suggestion=$(git config --get gitflow.prefix.hotfix || echo hotfix/)
-		printf "Hotfix branches? [$default_suggestion] "
+	# Patch branches
+	if ! git config --get gitflow.prefix.patch >/dev/null 2>&1 || flag force; then
+		default_suggestion=$(git config --get gitflow.prefix.patch || echo patch/)
+		printf "Patch branches? [$default_suggestion] "
 		if noflag defaults; then
 			read answer
 		else
 			printf "\n"
 		fi
 		[ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
-		git_do config $gitflow_config_option gitflow.prefix.hotfix "$prefix"
+		git_do config $gitflow_config_option gitflow.prefix.patch "$prefix"
 	fi
 
 	# Support branches
 	if ! git config --get gitflow.prefix.support >/dev/null 2>&1 || flag force; then
 		default_suggestion=$(git config --get gitflow.prefix.support || echo support/)
-		printf "Support branches? [$default_suggestion] "
-		if noflag defaults; then
-			read answer
-		else
-			printf "\n"
-		fi
-		[ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
+		# printf "Support branches? [$default_suggestion] "
+		# if noflag defaults; then
+		# 	read answer
+		# else
+		# 	printf "\n"
+		# fi
+		# [ "$answer" = "-" ] && prefix= || prefix=${answer:-$default_suggestion}
+		prefix=$default_suggestion
 		git_do config $gitflow_config_option gitflow.prefix.support "$prefix"
 	fi
 
@@ -344,13 +374,14 @@ file=    use given config file
 	if ! git config --get gitflow.path.hooks >/dev/null 2>&1 || flag force; then
         DOT_GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
 		default_suggestion=$(git config --get gitflow.path.hooks || echo "$DOT_GIT_DIR"/hooks)
-		printf "Hooks and filters directory? [$default_suggestion] "
-		if noflag defaults; then
-			read answer
-		else
-			printf "\n"
-		fi
-		[ "$answer" = "-" ] && hooks_dir= || hooks_dir=${answer:-$default_suggestion}
+		# printf "Hooks and filters directory? [$default_suggestion] "
+		# if noflag defaults; then
+		# 	read answer
+		# else
+		# 	printf "\n"
+		# fi
+		# [ "$answer" = "-" ] && hooks_dir= || hooks_dir=${answer:-$default_suggestion}
+		hooks_dir=$default_suggestion
 		git_do config $gitflow_config_option gitflow.path.hooks "$hooks_dir"
 	fi
 

@@ -47,11 +47,11 @@ usage() {
 	OPTIONS_SPEC="\
 git flow story [list]
 git flow story start
+git flow story prep
 git flow story finish
 git flow story publish
 git flow story track
 git flow story diff
-git flow story rebase
 git flow story checkout
 git flow story pull
 git flow story delete
@@ -107,8 +107,8 @@ v,verbose   Verbose (more) output
 	width=$(($width+3-${#PREFIX}))
 
 	for branch in $story_branches; do
-		base=$(git merge-base "$branch" "$DEVELOP_BRANCH")
-		develop_sha=$(git rev-parse "$DEVELOP_BRANCH")
+		base=$(git merge-base "$branch" "$MASTER_BRANCH")
+		develop_sha=$(git rev-parse "$MASTER_BRANCH")
 		branch_sha=$(git rev-parse "$branch")
 		if [ "$branch" = "$current_branch" ]; then
 			printf "* "
@@ -140,7 +140,7 @@ cmd_help() {
 
 name_or_current() {
 	if [ -z "$NAME" ]; then
-		use_current_story_branch_name
+		gitflow_use_current_branch_name
 	fi
 }
 
@@ -178,7 +178,7 @@ F,[no]fetch      Fetch from origin before performing local operation
 	local base
 
 	# Define flags
-	DEFINE_boolean 'fetch' false 'fetch from origin before performing local operation' F
+	DEFINE_boolean 'fetch' true 'fetch from origin before performing local operation' F
 
 	# Override defaults with values from config
 	gitflow_override_flag_boolean   "story.start.fetch"   "fetch"
@@ -186,7 +186,7 @@ F,[no]fetch      Fetch from origin before performing local operation
 	# Parse arguments
 	parse_args "$@"
 	eval set -- "${FLAGS_ARGV}"
-	base=${2:-$DEVELOP_BRANCH}
+	base=${2:-$MASTER_BRANCH}
 
 	require_base_is_local_branch "$base"
 	gitflow_require_name_arg
@@ -212,16 +212,177 @@ F,[no]fetch      Fetch from origin before performing local operation
 	# create branch
 	git_do checkout -b "$BRANCH" "$base" || die "Could not create story branch '$BRANCH'."
 
+	cmd_publish "$NAME"
+
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH" "$base"
 
 	echo
 	echo "Summary of actions:"
 	echo "- A new branch '$BRANCH' was created, based on '$base'"
+	echo "- '$BRANCH' was published to '$ORIGIN/$BRANCH' remotely"
+	echo
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo ""
 	echo "Now, start committing on your story. When done, use:"
 	echo ""
 	echo "     git flow story finish $NAME"
+	echo
+}
+
+cmd_prep() {	
+	OPTIONS_SPEC="\
+git flow story prep [-h] [-S] [--no-ff] [<name>]
+
+Prep story branch <name> for pull requesting into it's base branch or starting a new Task branch.
+When <name> is omitted the current branch is used, but only if it's a story branch.
+
+Requirements for a successful prep:
+  - The base branch must exist remotely
+  - The story branch must not have any local changes or commits made to it
+  - Both the base and Story branches must have clean working tree (no unstaged changes)
+
+This will perform the following operations and merge conflicts may occur.
+  - Update both the base and Story branch from remote tracking branches
+  - Update tracking information if not present
+  - Merge base branch into story branch
+  - Push story branch to remote
+
+--
+h,help!          Show this help
+showcommands!    Show git commands while executing them
+S,[no]squash           Squash story during merge
+no-ff!                 Never fast-forward during the merge
+"
+	DEFINE_boolean 'squash' false "squash story during merge" S
+	DEFINE_boolean 'squash-info' false "add branch info during squash" I
+	DEFINE_boolean 'no-ff!' false "Don't fast-forward ever during merge " N
+
+	gitflow_override_flag_boolean   "story.finish.squash"            "squash"
+	gitflow_override_flag_boolean   "story.finish.squash-info"       "squash_info"
+	gitflow_override_flag_boolean   "story.finish.no-ff"             "no_ff"
+
+	# Parse arguments
+	parse_args "$@"
+
+	gitflow_expand_nameprefix_arg_or_current
+
+	# Sanity checks
+	require_clean_working_tree
+	require_branch "$BRANCH"
+
+	BASE_BRANCH=$(gitflow_config_get_base_branch $BRANCH)
+	BASE_BRANCH=${BASE_BRANCH:-$MASTER_BRANCH}
+	git_local_branch_exists "$BASE_BRANCH" || die "The base '$BASE_BRANCH' doesn't exists locally or is not a branch. Can't finish the story branch '$BRANCH'."
+
+	# Fetch or publish
+	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+		git_fetch_branch "$ORIGIN" "$BRANCH"
+	else
+		cmd_publish "$NAME"
+	fi
+
+	# Require remote base branch
+	if ! git_remote_branch_exists "$ORIGIN/$BASE_BRANCH"; then
+		die "Base branch does not exist remotely. Not continuing"
+	fi
+
+	run_pre_hook "$NAME" "$ORIGIN" "$BRANCH"
+
+	# git_do fetch -q "$ORIGIN" || die "Could not fetch branch '$BRANCH' from remote '$ORIGIN'."
+	
+	# Pull remote branch in
+	git_do pull
+	if [ $? -ne 0 ]; then
+		# Oops.. we have a merge conflict!
+		# Write the given $BASE_BRANCH to a temporary file as we will
+		# be needing it later.
+		mkdir -p "$DOT_GIT_DIR/.gitflow"
+		echo "$BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+		echo
+		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo
+		echo "You can then complete the finish by running it again:"
+		echo "    git flow story prep $NAME"
+		echo
+		exit 1
+	fi
+
+	require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
+
+	# Pull base branch
+	echo "CHECKOUT $BASE_BRANCH"
+	git_do checkout "$BASE_BRANCH" || die "Could not switch to base branch"
+	git_do pull
+	if [ $? -ne 0 ]; then
+		# Oops.. we have a merge conflict!
+		# Write the given $BASE_BRANCH to a temporary file as we will
+		# be needing it later.
+		mkdir -p "$DOT_GIT_DIR/.gitflow"
+		echo "$BASE_BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+		echo
+		echo "There may have been merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo
+		echo "You can then complete the finish by running it again:"
+		echo "    git flow story prep $NAME"
+		echo
+
+		git_do checkout "$BRANCH" || die "Unable to switch back to story branch"
+
+		exit 1
+	fi
+
+	git_do checkout "$BRANCH" || die "Unable to switch back to story branch"
+
+	# Merge story into story
+	if noflag squash; then
+		if flag no_ff; then
+			git_do merge --no-ff "$BASE_BRANCH"
+		else
+			if [ "$(git rev-list -n2 "$BRANCH..$BASE_BRANCH" | wc -l)" -eq 1 ]; then
+				git_do merge --ff "$BASE_BRANCH"
+			else
+				git_do merge --no-ff "$BASE_BRANCH"
+			fi
+		fi
+	else
+		git_do merge --squash "$BASE_BRANCH"
+		flag squash_info && gitflow_create_squash_message "Merged base branch '$BASE_BRANCH'" "$BRANCH" "$BASE_BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
+		git_do commit
+	fi
+
+	if [ $? -ne 0 ]; then
+		# Oops.. we have a merge conflict!
+		# Write the given $BASE_BRANCH to a temporary file as we will
+		# be needing it later.
+		mkdir -p "$DOT_GIT_DIR/.gitflow"
+		echo "$BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+		echo
+		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo
+		echo "You can then complete the finish by running it again:"
+		echo "    git flow story prep $NAME"
+		echo
+		exit 1
+	fi
+
+	git_do push
+
+	# Configure remote tracking
+	run_post_hook "$NAME" "$ORIGIN" "$BRANCH"
+
+	echo
+	echo "Summary of actions:"
+	echo "- The local branch '$BRANCH' was updated from remote '$ORIGIN/$BRANCH'"
+	echo "- The local branch '$BASE_BRANCH' was updated from remote '$ORIGIN/$BASE_BRANCH'"
+	echo "- The base branch '$BASE_BRANCH' was merged into local Story branch '$BRANCH'"
+	echo "- The Story branch '$BRANCH' was pushed to '$ORIGIN'"
+	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
 
@@ -246,12 +407,12 @@ no-ff!                 Never fast-forward during the merge
 	local finish_base
 
 	# Define flags
-	DEFINE_boolean 'fetch' false "fetch from $ORIGIN before performing finish" F
+	DEFINE_boolean 'fetch' true "fetch from $ORIGIN before performing finish" F
 	DEFINE_boolean 'rebase' false "rebase before merging" r
 	DEFINE_boolean 'preserve-merges' false 'try to recreate merges while rebasing' p
-	DEFINE_boolean 'keep' false "keep branch after performing finish" k
-	DEFINE_boolean 'keepremote' false "keep the remote branch" R
-	DEFINE_boolean 'keeplocal' false "keep the local branch" L
+	DEFINE_boolean 'keep' true "keep branch after performing finish" k
+	DEFINE_boolean 'keepremote' true "keep the remote branch" R
+	DEFINE_boolean 'keeplocal' true "keep the local branch" L
 	DEFINE_boolean 'force_delete' false "force delete story branch after finish" D
 	DEFINE_boolean 'squash' false "squash story during merge" S
 	DEFINE_boolean 'squash-info' false "add branch info during squash" I
@@ -283,7 +444,7 @@ no-ff!                 Never fast-forward during the merge
 	require_branch "$BRANCH"
 
 	BASE_BRANCH=$(gitflow_config_get_base_branch $BRANCH)
-	BASE_BRANCH=${BASE_BRANCH:-$DEVELOP_BRANCH}
+	BASE_BRANCH=${BASE_BRANCH:-$MASTER_BRANCH}
 	git_local_branch_exists "$BASE_BRANCH" || die "The base '$BASE_BRANCH' doesn't exists locally or is not a branch. Can't finish the story branch '$BRANCH'."
 
 	# Detect if we're restoring from a merge conflict
@@ -344,6 +505,8 @@ no-ff!                 Never fast-forward during the merge
 		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
 	fi
 
+	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
+
 	# Check if the local branches have all the commits from the remote branches
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 			require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
@@ -391,28 +554,26 @@ no-ff!                 Never fast-forward during the merge
 	# 	git_do commit
 	# fi
 
-	if [ $? -ne 0 ]; then
-		# Oops.. we have a merge conflict!
-		# Write the given $BASE_BRANCH to a temporary file as we will
-		# be needing it later.
-		mkdir -p "$DOT_GIT_DIR/.gitflow"
-		echo "$BASE_BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
-		echo
-		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
-		echo "    git mergetool"
-		echo "    git commit"
-		echo
-		echo "You can then complete the finish by running it again:"
-		echo "    git flow story finish $NAME"
-		echo
-		exit 1
-	fi
+	# if [ $? -ne 0 ]; then
+	# 	# Oops.. we have a merge conflict!
+	# 	# Write the given $BASE_BRANCH to a temporary file as we will
+	# 	# be needing it later.
+	# 	mkdir -p "$DOT_GIT_DIR/.gitflow"
+	# 	echo "$BASE_BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+	# 	echo
+	# 	echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+	# 	echo "    git mergetool"
+	# 	echo "    git commit"
+	# 	echo
+	# 	echo "You can then complete the finish by running it again:"
+	# 	echo "    git flow story finish $NAME"
+	# 	echo
+	# 	exit 1
+	# fi
 
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH"
 
-	PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" | sed "s/\.git//g");
-	COMPARE_URL="https://$PUSH_URL/compare/$BASE_BRANCH...$BRANCH?expand=1";
-	open $COMPARE_URL;
+	open_github_pull_request
 
 	# When no merge conflict is detected, just clean up the story branch
 	# gitflow_config_remove_base_branch "$BRANCH"
@@ -462,7 +623,7 @@ helper_finish_cleanup() {
 
 	echo
 	echo "Summary of actions:"
-	echo "- The story branch '$BRANCH' was pull requested into '$BASE_BRANCH'"
+	echo "- The story branch '$BRANCH' was pushed to '$ORIGIN/$BRANCH'"
 	#echo "- Merge conflicts were resolved"		# TODO: Add this line when it's supported
 	# if noflag keep; then
 	# 	if [ $localbranchdeleted -eq $FLAGS_TRUE ]; then
@@ -482,6 +643,8 @@ helper_finish_cleanup() {
 		fi
 	# fi
 	echo "- Story branch '$BRANCH' "$keepmsg
+	echo "- A Pull Request was started on GitHub from $BRANCH into $BASE_BRANCH"
+	echo 
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
@@ -579,14 +742,14 @@ showcommands!    Show git commands while executing them
 
 	if [ "$NAME" != "" ]; then
 		gitflow_expand_nameprefix_arg 
-		base=$(git merge-base "$DEVELOP_BRANCH" "$BRANCH")
+		base=$(git merge-base "$MASTER_BRANCH" "$BRANCH")
 		git_do diff "$base..$BRANCH"
 	else
 		if ! git_current_branch | grep -q "^$PREFIX"; then
 			die "Not on a story branch. Name one explicitly."
 		fi
 
-		base=$(git merge-base "$DEVELOP_BRANCH" HEAD)
+		base=$(git merge-base "$MASTER_BRANCH" HEAD)
 		git_do diff "$base"
 	fi
 }
@@ -616,50 +779,50 @@ cmd_co() {
 	cmd_checkout "$@"
 }
 
-cmd_rebase() {
-	OPTIONS_SPEC="\
-git flow story rebase [-h] [-i] [-p] [<name|nameprefix>]
+# cmd_rebase() {
+# 	OPTIONS_SPEC="\
+# git flow story rebase [-h] [-i] [-p] [<name|nameprefix>]
 
-Rebase <name> on <base_branch>
---
-h,help!                Show this help
-showcommands!          Show git commands while executing them
-i,[no]interactive      Do an interactive rebase
-p,[no]preserve-merges  Preserve merges
-"
-	local opts
+# Rebase <name> on <base_branch>
+# --
+# h,help!                Show this help
+# showcommands!          Show git commands while executing them
+# i,[no]interactive      Do an interactive rebase
+# p,[no]preserve-merges  Preserve merges
+# "
+# 	local opts
 
-	# Define flags
-	DEFINE_boolean 'interactive' false 'do an interactive rebase' i
-	DEFINE_boolean 'preserve-merges' false 'try to recreate merges' p
+# 	# Define flags
+# 	DEFINE_boolean 'interactive' false 'do an interactive rebase' i
+# 	DEFINE_boolean 'preserve-merges' false 'try to recreate merges' p
 
-	# Override defaults with values from config
-	gitflow_override_flag_boolean   "story.rebase.interactive"       "interactive"
-	gitflow_override_flag_boolean   "story.rebase.preserve-merges"   "preserve_merges"
+# 	# Override defaults with values from config
+# 	gitflow_override_flag_boolean   "story.rebase.interactive"       "interactive"
+# 	gitflow_override_flag_boolean   "story.rebase.preserve-merges"   "preserve_merges"
 
-	# Parse arguments
-	parse_args "$@"
+# 	# Parse arguments
+# 	parse_args "$@"
 
-	gitflow_expand_nameprefix_arg_or_current 'story'
+# 	gitflow_expand_nameprefix_arg_or_current 'story'
 
-	BASE_BRANCH=$(gitflow_config_get_base_branch $BRANCH)
-	BASE_BRANCH=${BASE_BRANCH:-$DEVELOP_BRANCH}
+# 	BASE_BRANCH=$(gitflow_config_get_base_branch $BRANCH)
+# 	BASE_BRANCH=${BASE_BRANCH:-$MASTER_BRANCH}
 
-	warn "Will try to rebase '$NAME' which is based on '$BASE_BRANCH'..."
-	require_clean_working_tree
-	require_branch "$BRANCH"
+# 	warn "Will try to rebase '$NAME' which is based on '$BASE_BRANCH'..."
+# 	require_clean_working_tree
+# 	require_branch "$BRANCH"
 
-    git_local_branch_exists "$BASE_BRANCH" || die "The base '$BASE_BRANCH' doesn't exists locally or is not a branch. Can't finish the story branch '$BRANCH'."
+#     git_local_branch_exists "$BASE_BRANCH" || die "The base '$BASE_BRANCH' doesn't exists locally or is not a branch. Can't finish the story branch '$BRANCH'."
 
-	git_do checkout -q "$BRANCH"  || die "Could not check out branch '$BRANCH'."
-	if flag interactive; then
-		opts="$opts -i"
-	fi
-	if flag preserve_merges; then
-		opts="$opts -p"
-	fi
-	git_do rebase $opts "$BASE_BRANCH"
-}
+# 	git_do checkout -q "$BRANCH"  || die "Could not check out branch '$BRANCH'."
+# 	if flag interactive; then
+# 		opts="$opts -i"
+# 	fi
+# 	if flag preserve_merges; then
+# 		opts="$opts -p"
+# 	fi
+# 	git_do rebase $opts "$BASE_BRANCH"
+# }
 
 avoid_accidental_cross_branch_action() {
 	local current_branch
@@ -771,10 +934,10 @@ r,[no]remote     Delete remote branch
 	# We can't delete a branch we are on, switch to the develop branch.
 	if [ "$BRANCH" = "$current_branch" ]; then
 		require_clean_working_tree
-		git_do checkout "$DEVELOP_BRANCH" || die "Could not check out branch '$DEVELOP_BRANCH'."
+		git_do checkout "$MASTER_BRANCH" || die "Could not check out branch '$MASTER_BRANCH'."
 	fi
 
-	if git_is_branch_merged_into "$BRANCH" "$DEVELOP_BRANCH"; then
+	if git_is_branch_merged_into "$BRANCH" "$MASTER_BRANCH"; then
 		git_do branch -d "$BRANCH" || die "Could not delete the $BRANCH."
 		if flag remote; then
 			git_do push "$ORIGIN" :"$BRANCH" || die "Could not delete the remote $BRANCH in $ORIGIN."

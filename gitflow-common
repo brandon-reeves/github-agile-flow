@@ -276,9 +276,11 @@ gitflow_has_develop_configured() {
 }
 
 gitflow_has_prefixes_configured() {
+	git config --get gitflow.prefix.story >/dev/null 2>&1     && \
+	git config --get gitflow.prefix.task >/dev/null 2>&1     && \
 	git config --get gitflow.prefix.feature >/dev/null 2>&1     && \
 	git config --get gitflow.prefix.release >/dev/null 2>&1     && \
-	git config --get gitflow.prefix.hotfix >/dev/null 2>&1      && \
+	git config --get gitflow.prefix.patch >/dev/null 2>&1      && \
 	git config --get gitflow.prefix.support >/dev/null 2>&1     && \
 	git config --get gitflow.prefix.versiontag >/dev/null 2>&1
 }
@@ -286,7 +288,7 @@ gitflow_has_prefixes_configured() {
 gitflow_is_initialized() {
 	gitflow_has_master_configured                    && \
 	gitflow_has_develop_configured                   && \
-	[ "$(git config --get gitflow.branch.master)" != "$(git config --get gitflow.branch.develop)" ] && \
+	# [ "$(git config --get gitflow.branch.master)" != "$(git config --get gitflow.branch.develop)" ] && \
 	gitflow_has_prefixes_configured
 }
 
@@ -370,9 +372,11 @@ gitflow_is_prefixed_branch() {
 
 	branch=$1
 	case $branch in
+	$(git config --get gitflow.prefix.story)* | \
+	$(git config --get gitflow.prefix.task)* | \
 	$(git config --get gitflow.prefix.feature)* | \
 	$(git config --get gitflow.prefix.release)* | \
-	$(git config --get gitflow.prefix.hotfix)*  | \
+	$(git config --get gitflow.prefix.patch)*  | \
 	$(git config --get gitflow.prefix.support)* )
 		return=0
 		;;
@@ -533,6 +537,12 @@ gitflow_require_name_arg() {
 	fi
 }
 
+gitflow_require_story_arg() {
+	if [ "$STORY" = "" ]; then
+		die_help "Missing argument <name>"
+	fi
+}
+
 gitflow_require_base_arg() {
 	if [ "$BASE" = "" ]; then
 		die_help "Missing argument <base>"
@@ -548,7 +558,7 @@ gitflow_use_current_branch_name() {
 		BRANCH=$current_branch
 		NAME=${BRANCH#$PREFIX}
 	else
-		warn "The current HEAD is no feature branch."
+		warn "The current HEAD is no $PREFIX branch."
 		warn "Please specify a <name> argument."
 		exit 1
 	fi
@@ -713,4 +723,24 @@ run_post_hook() {
 
 flags_help() {
 	eval "$( echo "$OPTIONS_SPEC" | git rev-parse --parseopt -- "-h" || echo exit $? )"
+}
+
+open_github_pull_request() {
+	local push_url
+	local compare_url
+
+	push_url=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" | sed "s/\.git//g");
+	compare_url="https://$push_url/compare/$BASE_BRANCH...$BRANCH?expand=1";
+
+	open $compare_url
+}
+
+goto_jira_ticket() {
+	local jira_url
+	local ticket
+
+	ticket=$(echo $NAME | egrep -o "^[A-Z]+-[0-9]+")
+	path=${ticket:-$NAME}
+	jira_url="https://ncinodev.atlassian.net/browse/$path"
+	open $jira_url
 }

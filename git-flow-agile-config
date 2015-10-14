@@ -106,10 +106,10 @@ file=     Use given config file
 	parse_args "$@"
 
 	output=$(git config $gitflow_config_option --get gitflow.branch.master)
-	echo "Branch name for production releases: $output "
+	echo "Branch name for MAIN DEVELOPMENT: $output "
 
 	output=$(git config $gitflow_config_option --get gitflow.branch.develop)
-	echo "Branch name for \"next release\" development: $output "
+	echo "Branch name for \"LEGACY\" development: $output "
 
 
 	output=$(git config $gitflow_config_option --get gitflow.prefix.story)

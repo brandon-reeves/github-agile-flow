@@ -139,7 +139,7 @@ cmd_help() {
 
 name_or_current() {
 	if [ -z "$NAME" ]; then
-		use_current_feature_branch_name
+		gitflow_use_current_branch_name
 	fi
 }
 
@@ -177,7 +177,7 @@ F,[no]fetch      Fetch from origin before performing local operation
 	local base
 
 	# Define flags
-	DEFINE_boolean 'fetch' false 'fetch from origin before performing local operation' F
+	DEFINE_boolean 'fetch' true 'fetch from origin before performing local operation' F
 
 	# Override defaults with values from config
 	gitflow_override_flag_boolean   "feature.start.fetch"   "fetch"
@@ -213,10 +213,13 @@ F,[no]fetch      Fetch from origin before performing local operation
 
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH" "$base"
 
+	goto_jira_ticket
+
 	echo
 	echo "Summary of actions:"
 	echo "- A new branch '$BRANCH' was created, based on '$base'"
 	echo "- You are now on branch '$(git_current_branch)'"
+	echo "- The corresponding JIRA issue was launched so you may move it to In Progress"
 	echo ""
 	echo "Now, start committing on your feature. When done, use:"
 	echo ""
@@ -245,12 +248,12 @@ no-ff!                 Never fast-forward during the merge
 	local finish_base
 
 	# Define flags
-	DEFINE_boolean 'fetch' false "fetch from $ORIGIN before performing finish" F
+	DEFINE_boolean 'fetch' true "fetch from $ORIGIN before performing finish" F
 	DEFINE_boolean 'rebase' false "rebase before merging" r
 	DEFINE_boolean 'preserve-merges' false 'try to recreate merges while rebasing' p
-	DEFINE_boolean 'keep' false "keep branch after performing finish" k
-	DEFINE_boolean 'keepremote' false "keep the remote branch" R
-	DEFINE_boolean 'keeplocal' false "keep the local branch" L
+	DEFINE_boolean 'keep' true "keep branch after performing finish" k
+	DEFINE_boolean 'keepremote' true "keep the remote branch" R
+	DEFINE_boolean 'keeplocal' true "keep the local branch" L
 	DEFINE_boolean 'force_delete' false "force delete feature branch after finish" D
 	DEFINE_boolean 'squash' false "squash feature during merge" S
 	DEFINE_boolean 'squash-info' false "add branch info during squash" I
@@ -343,6 +346,8 @@ no-ff!                 Never fast-forward during the merge
 		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
 	fi
 
+	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
+
 	# Check if the local branches have all the commits from the remote branches
 	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
 			require_branches_equal "$BRANCH" "$ORIGIN/$BRANCH"
@@ -409,9 +414,15 @@ no-ff!                 Never fast-forward during the merge
 
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH"
 
-	PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" | sed "s/\.git//g");
-	COMPARE_URL="https://$PUSH_URL/compare/$BASE_BRANCH...$BRANCH?expand=1";
-	open $COMPARE_URL;
+	open_github_pull_request
+	goto_jira_ticket
+
+	# PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" | sed "s/\.git//g");
+	# COMPARE_URL="https://$PUSH_URL/compare/$BASE_BRANCH...$BRANCH?expand=1";
+	# open $COMPARE_URL;
+
+	# JIRA_URL="https://ncinodev.atlassian.net/browse/$BRANCH"
+	# open $JIRA_URL;
 
 	# When no merge conflict is detected, just clean up the feature branch
 	# gitflow_config_remove_base_branch "$BRANCH"
@@ -461,7 +472,7 @@ helper_finish_cleanup() {
 
 	echo
 	echo "Summary of actions:"
-	echo "- The feature branch '$BRANCH' was pull requested into '$BASE_BRANCH'"
+	echo "- The feature branch '$BRANCH' was pushed to '$ORIGIN/$BRANCH'"
 	#echo "- Merge conflicts were resolved"		# TODO: Add this line when it's supported
 	# if noflag keep; then
 	# 	if [ $localbranchdeleted -eq $FLAGS_TRUE ]; then
@@ -481,6 +492,9 @@ helper_finish_cleanup() {
 		fi
 	# fi
 	echo "- Feature branch '$BRANCH' "$keepmsg
+	echo "- A Pull Request was started on GitHub from $BRANCH into $BASE_BRANCH"
+	echo "- The corresponding JIRA issue was launched so you may move it to Code Review"
+	echo
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
