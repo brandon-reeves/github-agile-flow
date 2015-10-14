@@ -421,7 +421,9 @@ h,help!          Show this help
 
 	grunt jasmine 
 
-	ant deployNcinoCI
+	ant deployNcinoCI > /dev/null
+
+	goto_salesforce_deploy_status
 }
 
 cmd_finish() {

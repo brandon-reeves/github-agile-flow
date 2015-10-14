@@ -745,10 +745,22 @@ goto_jira_ticket() {
 	open $jira_url
 }
 
+percent_escape() {
+	echo $(python -c "import urllib, sys; print urllib.quote('$1')")
+}
+
 goto_salesforce_deploy_status() {
 	local sf_username
 	local sf_password
 	local sf_url
 
-	
+	sf_username=$(awk '/sf.username = (.*)$/ {print $3}' build.properties)
+	sf_password=$(awk '/sf.password = (.*)$/ {print $3}' build.properties)
+
+	sf_username=$(percent_escape "${sf_username}")
+	sf_password=$(percent_escape "${sf_password}")
+
+	sf_url="https://www.salesforce.com/login.jsp?pw=${sf_password}&un=${sf_username}&startURL=%2Fchangemgmt%2FmonitorDeployment.apexp"
+
+	open "$sf_url"
 }
