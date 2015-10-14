@@ -48,6 +48,7 @@ usage() {
 git flow story [list]
 git flow story start
 git flow story prep
+git flow story deploy
 git flow story finish
 git flow story publish
 git flow story track
@@ -291,6 +292,7 @@ no-ff!                 Never fast-forward during the merge
 	# git_do fetch -q "$ORIGIN" || die "Could not fetch branch '$BRANCH' from remote '$ORIGIN'."
 	
 	# Pull remote branch in
+	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
 	git_do pull
 	if [ $? -ne 0 ]; then
 		# Oops.. we have a merge conflict!
@@ -384,6 +386,43 @@ no-ff!                 Never fast-forward during the merge
 	echo "- The Story branch '$BRANCH' was pushed to '$ORIGIN'"
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
+}
+
+
+cmd_deploy() {
+	OPTIONS_SPEC="\
+git flow story deploy [-h]
+
+Deploy story branch <name> to the org specified in build.properties and run all local and Apex tests.
+
+This will perform the following operations and build failures may occur.
+  - Install npm dependencies
+  - Run Jasmine tests
+  - Deploy to org and run all tests
+
+  - If this fails, you can fix the issues and safely re-run this task
+
+--
+h,help!          Show this help
+"
+	# Parse arguments
+	parse_args "$@"
+
+	gitflow_expand_nameprefix_arg_or_current
+
+	# Sanity checks
+	require_clean_working_tree
+	require_branch "$BRANCH"
+
+	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
+
+	cd $(git rev-parse --show-toplevel)
+
+	npm install
+
+	grunt jasmine 
+
+	ant deployNcinoCI
 }
 
 cmd_finish() {
@@ -505,6 +544,7 @@ no-ff!                 Never fast-forward during the merge
 		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
 	fi
 
+	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
 	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
 
 	# Check if the local branches have all the commits from the remote branches

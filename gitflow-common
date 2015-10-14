@@ -744,3 +744,11 @@ goto_jira_ticket() {
 	jira_url="https://ncinodev.atlassian.net/browse/$path"
 	open $jira_url
 }
+
+goto_salesforce_deploy_status() {
+	local sf_username
+	local sf_password
+	local sf_url
+
+	
+}
