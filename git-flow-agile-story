@@ -411,7 +411,6 @@ h,help!          Show this help
 	gitflow_expand_nameprefix_arg_or_current
 
 	# Sanity checks
-	require_clean_working_tree
 	require_branch "$BRANCH"
 
 	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
