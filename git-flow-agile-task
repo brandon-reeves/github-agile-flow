@@ -426,19 +426,26 @@ h,help!          Show this help
 
 	cd $(git rev-parse --show-toplevel)
 
+	echo "============================== SETUP =============================="
 	npm install
 
+	echo "============================== LOCAL TESTS =============================="
 	grunt jasmine 
 
+	echo "============================== DEPLOY =============================="
+	(sleep 5; goto_salesforce_deploy_status) &
+
+	echo
+	echo "Opening Deployment Status page..."
+	echo "Deploying and running tests..."
+	echo 
 	ant deployNcinoCI > /dev/null
 
-	goto_salesforce_deploy_status
-	
 	echo
 	echo "Summary of actions:"
 	echo "- The local Jasmine JS tests were run"
 	echo "- The code was attempted to be deployed to your org"
-	echo "- All tests were attempted to be run"
+	echo "- All tests were attempted"
 	echo "- Your org's deployment status was opened in your browser"
 	echo
 	echo "- You are now on branch '$(git_current_branch)'"
