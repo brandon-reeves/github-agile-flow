@@ -389,10 +389,6 @@ no-ff!                 Never fast-forward during the merge
 	echo "- The local branch '$BASE_BRANCH' was updated from remote '$ORIGIN/$BASE_BRANCH'"
 	echo "- The base branch '$BASE_BRANCH' was merged into local feature branch '$BRANCH'"
 	echo
-	echo "- The local Jasmine JS tests were run"
-	echo "- The code was attempted to be deployed to your org"
-	echo "- All tests were attempted to be run"
-	echo
 	echo "- You are now on branch '$(git_current_branch)'"
 	echo
 }
@@ -432,6 +428,15 @@ h,help!          Show this help
 	ant deployNcinoCI > /dev/null
 
 	goto_salesforce_deploy_status
+
+	echo
+	echo "Summary of actions:"
+	echo "- The local Jasmine JS tests were run"
+	echo "- The code was attempted to be deployed to your org"
+	echo "- All tests were attempted to be run"
+	echo "- Your org's deployment status was opened in your browser"
+	echo
+	echo "- You are now on branch '$(git_current_branch)'"
 }
 
 cmd_finish() {
