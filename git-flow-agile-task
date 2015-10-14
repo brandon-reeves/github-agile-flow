@@ -219,8 +219,6 @@ F,[no]fetch      Fetch from origin before performing local operation
 	# isn't behind it (to avoid unnecessary rebasing)
 	if git_remote_branch_exists "$ORIGIN/$base"; then
 		require_branches_equal "$base" "$ORIGIN/$base"
-	else
-		git_do checkout -t ""
 	fi
 
 	run_pre_hook "$NAME" "$ORIGIN" "$BRANCH" "$base"

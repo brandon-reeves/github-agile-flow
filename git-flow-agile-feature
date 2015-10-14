@@ -47,6 +47,8 @@ usage() {
 	OPTIONS_SPEC="\
 git flow feature [list]
 git flow feature start
+git flow feature prep
+git flow feature deploy
 git flow feature finish
 git flow feature publish
 git flow feature track
@@ -187,14 +189,24 @@ F,[no]fetch      Fetch from origin before performing local operation
 	eval set -- "${FLAGS_ARGV}"
 	base=${2:-$DEVELOP_BRANCH}
 
-	require_base_is_local_branch "$base"
-	gitflow_require_name_arg
-	gitflow_config_set_base_branch $base $BRANCH
-
 	# Update the local repo with remote changes, if asked
 	if flag fetch; then
 		git_fetch_branch "$ORIGIN" "$base"
 	fi
+
+	if git_remote_branch_exists "$ORIGIN/$base"; then
+		if ! git_local_branch_exists "$base"; then
+			# Pull down base branch
+			git_do checkout -t "$ORIGIN/$base" || die "Could not track remote base branch '$ORIGIN/$base'"
+		fi
+	else
+		die "Git-flow Process Error: base branch does not exist on remote"
+	fi
+
+	require_base_is_local_branch "$base"
+	gitflow_require_name_arg
+	gitflow_config_set_base_branch $base $BRANCH
+
 
 	# Sanity checks
 	require_branch_absent "$BRANCH"
@@ -225,6 +237,200 @@ F,[no]fetch      Fetch from origin before performing local operation
 	echo ""
 	echo "     git flow feature finish $NAME"
 	echo
+}
+
+cmd_prep() {	
+	OPTIONS_SPEC="\
+git flow feature prep [-h] [-S] [--no-ff] [<name>]
+
+Prep feature branch <name> for pull requesting into it's base branch.
+When <name> is omitted the current branch is used, but only if it's a feature branch.
+
+Requirements for a successful prep:
+  - The base branch must exist remotely
+  - Both the base and feature branches must have clean working tree (no unstaged changes)
+
+This will perform the following operations and merge conflicts may occur.
+  - Update both the base and feature branch from remote tracking branches
+  - Update tracking information if not present
+  - Merge base branch into feature branch
+
+  - If this fails, you can fix the issues and safely re-run this task
+
+--
+h,help!          Show this help
+showcommands!    Show git commands while executing them
+S,[no]squash           Squash feature during merge
+no-ff!                 Never fast-forward during the merge
+"
+	DEFINE_boolean 'squash' false "squash feature during merge" S
+	DEFINE_boolean 'squash-info' false "add branch info during squash" I
+	DEFINE_boolean 'no-ff!' false "Don't fast-forward ever during merge " N
+
+	gitflow_override_flag_boolean   "feature.finish.squash"            "squash"
+	gitflow_override_flag_boolean   "feature.finish.squash-info"       "squash_info"
+	gitflow_override_flag_boolean   "feature.finish.no-ff"             "no_ff"
+
+	# Parse arguments
+	parse_args "$@"
+
+	gitflow_expand_nameprefix_arg_or_current
+
+	# Sanity checks
+	require_clean_working_tree
+	require_branch "$BRANCH"
+
+	BASE_BRANCH=$(gitflow_config_get_base_branch $BRANCH)
+	BASE_BRANCH=${BASE_BRANCH:-$DEVELOP_BRANCH}
+	git_local_branch_exists "$BASE_BRANCH" || die "The base '$BASE_BRANCH' doesn't exists locally or is not a branch. Can't finish the feature branch '$BRANCH'."
+
+	# Require remote base branch
+	if ! git_remote_branch_exists "$ORIGIN/$BASE_BRANCH"; then
+		die "Base branch does not exist remotely. Not continuing"
+	fi
+
+	# Fetch or publish
+	if git_remote_branch_exists "$ORIGIN/$BRANCH"; then
+		git_fetch_branch "$ORIGIN" "$BRANCH"
+	else
+		cmd_publish "$NAME"
+	fi
+
+	run_pre_hook "$NAME" "$ORIGIN" "$BRANCH"
+
+	# git_do fetch -q "$ORIGIN" || die "Could not fetch branch '$BRANCH' from remote '$ORIGIN'."
+	
+	# Pull remote branch in
+	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
+	git_do pull
+	if [ $? -ne 0 ]; then
+		# Oops.. we have a merge conflict!
+		# Write the given $BASE_BRANCH to a temporary file as we will
+		# be needing it later.
+		mkdir -p "$DOT_GIT_DIR/.gitflow"
+		echo "$BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+		echo
+		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo
+		echo "You can then complete the finish by running it again:"
+		echo "    git flow feature prep $NAME"
+		echo
+		exit 1
+	fi
+
+	# Pull base branch
+	echo "CHECKOUT $BASE_BRANCH"
+	git_do checkout "$BASE_BRANCH" || die "Could not switch to base branch"
+	git_do pull
+	if [ $? -ne 0 ]; then
+		# Oops.. we have a merge conflict!
+		# Write the given $BASE_BRANCH to a temporary file as we will
+		# be needing it later.
+		mkdir -p "$DOT_GIT_DIR/.gitflow"
+		echo "$BASE_BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+		echo
+		echo "There may have been merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo
+		echo "You can then complete the finish by running it again:"
+		echo "    git flow feature prep $NAME"
+		echo
+
+		git_do checkout "$BRANCH" || die "Unable to switch back to feature branch"
+
+		exit 1
+	fi
+
+	git_do checkout "$BRANCH" || die "Unable to switch back to feature branch"
+
+	# Merge base into feature
+	if noflag squash; then
+		if flag no_ff; then
+			git_do merge --no-ff "$BASE_BRANCH"
+		else
+			if [ "$(git rev-list -n2 "$BRANCH..$BASE_BRANCH" | wc -l)" -eq 1 ]; then
+				git_do merge --ff "$BASE_BRANCH"
+			else
+				git_do merge --no-ff "$BASE_BRANCH"
+			fi
+		fi
+	else
+		git_do merge --squash "$BASE_BRANCH"
+		flag squash_info && gitflow_create_squash_message "Merged base branch '$BASE_BRANCH'" "$BRANCH" "$BASE_BRANCH" > "$DOT_GIT_DIR/SQUASH_MSG"
+		git_do commit
+	fi
+
+	if [ $? -ne 0 ]; then
+		# Oops.. we have a merge conflict!
+		# Write the given $BASE_BRANCH to a temporary file as we will
+		# be needing it later.
+		mkdir -p "$DOT_GIT_DIR/.gitflow"
+		echo "$BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+		echo
+		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+		echo "    git mergetool"
+		echo "    git commit"
+		echo
+		echo "You can then complete the finish by running it again:"
+		echo "    git flow feature prep $NAME"
+		echo
+		exit 1
+	fi
+
+	# Configure remote tracking
+	run_post_hook "$NAME" "$ORIGIN" "$BRANCH"
+
+	echo
+	echo "Summary of actions:"
+	echo "- The local branch '$BRANCH' was updated from remote '$ORIGIN/$BRANCH'"
+	echo "- The local branch '$BASE_BRANCH' was updated from remote '$ORIGIN/$BASE_BRANCH'"
+	echo "- The base branch '$BASE_BRANCH' was merged into local feature branch '$BRANCH'"
+	echo
+	echo "- The local Jasmine JS tests were run"
+	echo "- The code was attempted to be deployed to your org"
+	echo "- All tests were attempted to be run"
+	echo
+	echo "- You are now on branch '$(git_current_branch)'"
+	echo
+}
+
+cmd_deploy() {
+	OPTIONS_SPEC="\
+git flow feature deploy [-h]
+
+Deploy feature branch <name> to the org specified in build.properties and run all local and Apex tests.
+
+This will perform the following operations and build failures may occur.
+  - Install npm dependencies
+  - Run Jasmine tests
+  - Deploy to org and run all tests
+
+  - If this fails, you can fix the issues and safely re-run this task
+
+--
+h,help!          Show this help
+"
+	# Parse arguments
+	parse_args "$@"
+
+	gitflow_expand_nameprefix_arg_or_current
+
+	# Sanity checks
+	require_clean_working_tree
+	require_branch "$BRANCH"
+
+	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
+
+	cd $(git rev-parse --show-toplevel)
+
+	npm install
+
+	grunt jasmine 
+
+	ant deployNcinoCI
 }
 
 cmd_finish() {
@@ -341,11 +547,19 @@ no-ff!                 Never fast-forward during the merge
 		cmd_publish "$NAME"
 	fi
 
+	# We always make sure the base branch exists
+	if git_remote_branch_exists "$ORIGIN/$BASE_BRANCH"; then
+		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
+	else
+		die "Error in git-flow. Base branch does not exist remotely."
+	fi
+
 	# Update local branches with remote branches
 	if flag fetch; then
 		git_fetch_branch "$ORIGIN" "$BASE_BRANCH"
 	fi
 
+	git_do checkout "$BRANCH" || die "Could not check out branch '$BRANCH'."
 	git_do push "$ORIGIN" "$BRANCH" || die "Could not push the $BRANCH to $ORIGIN."
 
 	# Check if the local branches have all the commits from the remote branches
@@ -395,34 +609,27 @@ no-ff!                 Never fast-forward during the merge
 	# 	git_do commit
 	# fi
 
-	if [ $? -ne 0 ]; then
-		# Oops.. we have a merge conflict!
-		# Write the given $BASE_BRANCH to a temporary file as we will
-		# be needing it later.
-		mkdir -p "$DOT_GIT_DIR/.gitflow"
-		echo "$BASE_BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
-		echo
-		echo "There were merge conflicts. To resolve the merge conflict manually, use:"
-		echo "    git mergetool"
-		echo "    git commit"
-		echo
-		echo "You can then complete the finish by running it again:"
-		echo "    git flow feature finish $NAME"
-		echo
-		exit 1
-	fi
+	# if [ $? -ne 0 ]; then
+	# 	# Oops.. we have a merge conflict!
+	# 	# Write the given $BASE_BRANCH to a temporary file as we will
+	# 	# be needing it later.
+	# 	mkdir -p "$DOT_GIT_DIR/.gitflow"
+	# 	echo "$BASE_BRANCH" > "$DOT_GIT_DIR/.gitflow/MERGE_BASE"
+	# 	echo
+	# 	echo "There were merge conflicts. To resolve the merge conflict manually, use:"
+	# 	echo "    git mergetool"
+	# 	echo "    git commit"
+	# 	echo
+	# 	echo "You can then complete the finish by running it again:"
+	# 	echo "    git flow feature finish $NAME"
+	# 	echo
+	# 	exit 1
+	# fi
 
 	run_post_hook "$NAME" "$ORIGIN" "$BRANCH"
 
 	open_github_pull_request
 	goto_jira_ticket
-
-	# PUSH_URL=$(git remote show origin | grep Push | grep -oh "github.com[\/:].*" | sed "s/github\.com\:/github.com\//g" | sed "s/\.git//g");
-	# COMPARE_URL="https://$PUSH_URL/compare/$BASE_BRANCH...$BRANCH?expand=1";
-	# open $COMPARE_URL;
-
-	# JIRA_URL="https://ncinodev.atlassian.net/browse/$BRANCH"
-	# open $JIRA_URL;
 
 	# When no merge conflict is detected, just clean up the feature branch
 	# gitflow_config_remove_base_branch "$BRANCH"
@@ -472,7 +679,7 @@ helper_finish_cleanup() {
 
 	echo
 	echo "Summary of actions:"
-	echo "- The feature branch '$BRANCH' was pushed to '$ORIGIN/$BRANCH'"
+	echo "- The feature branch '$BRANCH' was pull requested into '$ORIGIN/$BRANCH'"
 	#echo "- Merge conflicts were resolved"		# TODO: Add this line when it's supported
 	# if noflag keep; then
 	# 	if [ $localbranchdeleted -eq $FLAGS_TRUE ]; then
