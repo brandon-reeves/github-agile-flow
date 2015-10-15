@@ -436,9 +436,16 @@ h,help!          Show this help
 	(sleep 5; goto_salesforce_deploy_status) &
 
 	echo
+	echo "Preparing to Deploy..."
 	echo "Opening Deployment Status page..."
-	echo "Deploying and running tests..."
+	echo
+	echo "Errors will be reported below. Status messages are hidden."
+	echo "You may check the deployment status on the webpage that opened."
+	echo "Or by navigating to Setup > Deploy > Deployment Status in your org."
+	echo "(you may also terminate this process and/or close this window after the deployment shows up on the webpage)"
 	echo 
+	echo "Deploying and running all tests..."
+	echo
 	ant deployNcinoCI > /dev/null
 
 	echo
